@@ -3,6 +3,7 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
 import {
   Alert,
   Image,
@@ -19,6 +20,8 @@ type LoginScreenProps = NativeStackScreenProps<any, "Login">;
 
 const LoginScreen = ({ navigation }: LoginScreenProps) => {
   const router = useRouter();
+  const dispatch = useDispatch<any>();
+  const { isLoading } = useSelector((state: any) => state.auth);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<{ email?: string; password?: string }>(
@@ -45,7 +48,7 @@ const LoginScreen = ({ navigation }: LoginScreenProps) => {
     if (!validate()) return;
 
     try {
-      authService.login({ email, password });
+      await dispatch(authService.login(email, password));
       Alert.alert("Success", "Login successful!");
     } catch (error: any) {
       Alert.alert(
@@ -84,8 +87,14 @@ const LoginScreen = ({ navigation }: LoginScreenProps) => {
         <TouchableOpacity onPress={() => router.push("/#")}>
           <Text style={styles.forgotPassword}>Forgot Password?</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.button} onPress={handleLogin}>
-          <Text style={styles.buttonText}>Eat Now!</Text>
+        <TouchableOpacity
+          style={[styles.button, isLoading && styles.buttonDisabled]}
+          onPress={handleLogin}
+          disabled={isLoading}
+        >
+          <Text style={styles.buttonText}>
+            {isLoading ? "Signing in..." : "Eat Now!"}
+          </Text>
         </TouchableOpacity>
         <View style={styles.linewithtext}>
           <View style={styles.line} />
@@ -129,6 +138,7 @@ const styles = StyleSheet.create({
   },
   gradient: {
     flex: 1,
+    justifyContent: "center",
   },
   card: {
     padding: 25,
@@ -162,6 +172,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginTop: 15,
+  },
+  buttonDisabled: {
+    opacity: 0.7,
   },
   buttonText: {
     color: "#fff",
@@ -231,12 +244,10 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   SignupBtn: {
-    flex:1,
+    paddingVertical: 15,
     justifyContent: "center",
     alignItems: "center",
     width: "100%",
-    position: "fixed",
-    bottom: 0,
     backgroundColor: Colors.default.primary,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,

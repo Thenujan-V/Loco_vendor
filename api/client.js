@@ -1,6 +1,8 @@
 import axios from 'axios';
 import { store } from '../redux/store'; 
 import { BASE_URL } from '../constants/Config';
+import * as SecureStore from 'expo-secure-store';
+import { logout } from '../redux/slices/authSlice';
 
 const apiClient = axios.create({
   baseURL: BASE_URL,
@@ -26,11 +28,14 @@ apiClient.interceptors.request.use(
 
 apiClient.interceptors.response.use(
   (response) => response, // If status is 2xx, just return response
-  (error) => {
+  async (error) => {
     // Check if the error is 401 (Expired/Invalid) or 403 (No Permission)
     if (error.response && (error.response.status === 401 || error.response.status === 403)) {
       
       console.log("Unauthorized or Forbidden - Logging out...");
+
+      await SecureStore.deleteItemAsync('userToken');
+      await SecureStore.deleteItemAsync('userRole');
       
       // Clear the Redux state
       store.dispatch(logout()); 

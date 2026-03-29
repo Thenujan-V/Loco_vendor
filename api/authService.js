@@ -19,10 +19,12 @@ const authService = {
 
       //  Update Redux state
       dispatch(authSuccess({ token, role }));
+      return { token, role };
       
     } catch (error) {
       const errorMsg = error.response?.data?.message || 'Login failed. Please try again.';
       dispatch(authFailure(errorMsg));
+      throw error;
     }
   },
 
@@ -38,10 +40,12 @@ const authService = {
       await SecureStore.setItemAsync('userRole', role);
 
       dispatch(authSuccess({ token, role }));
+      return { token, role };
       
     } catch (error) {
       const errorMsg = error.response?.data?.message || 'Signup failed.';
       dispatch(authFailure(errorMsg));
+      throw error;
     }
   },
 };
