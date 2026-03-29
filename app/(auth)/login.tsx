@@ -3,7 +3,6 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
-import { useDispatch, useSelector } from "react-redux";
 import {
   Alert,
   Image,
@@ -13,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useDispatch, useSelector } from "react-redux";
 import authService from "../../api/authService";
 import { Colors } from "../../constants/theme";
 
@@ -44,17 +44,32 @@ const LoginScreen = ({ navigation }: LoginScreenProps) => {
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
+
   const handleLogin = async () => {
     if (!validate()) return;
 
     try {
       await dispatch(authService.login(email, password));
-      Alert.alert("Success", "Login successful!");
+      // Redux _layout will handle routing automatically on success.
     } catch (error: any) {
-      Alert.alert(
-        "Login Failed",
-        error?.response?.data?.message || "Something went wrong",
-      );
+      const msg = error?.response?.data?.message || "Something went wrong";
+      const status = error?.response?.status;
+
+      // 1. Check if it's an Authentication Failure (e.g. wrong password or email)
+      if (status === 401 || msg.toLowerCase().includes("invalid") || msg.toLowerCase().includes("authenticate")) {
+        Alert.alert("Authentication Failed", "Please check your email and password and try again.");
+      }
+      // 2. Check if it's a Verification Failure (Documents not verified yet)
+      else if (status === 403 || msg.toLowerCase().includes("verif") || msg.toLowerCase().includes("document")) {
+        Alert.alert(
+          "Verification Pending",
+          "Your documents are currently under review and not verified yet. You cannot login until verified.\\n\\nContact Admin: +94 77 123 4567"
+        );
+      }
+      // 3. Fallback generic error
+      else {
+        Alert.alert("Login Failed", msg);
+      }
     }
   };
 
@@ -72,6 +87,7 @@ const LoginScreen = ({ navigation }: LoginScreenProps) => {
           style={styles.input}
           value={email}
           onChangeText={setEmail}
+          autoCapitalize="none"
         />
         {errors.email && <Text style={styles.error}>{errors.email}</Text>}
 
@@ -87,6 +103,7 @@ const LoginScreen = ({ navigation }: LoginScreenProps) => {
         <TouchableOpacity onPress={() => router.push("/#")}>
           <Text style={styles.forgotPassword}>Forgot Password?</Text>
         </TouchableOpacity>
+
         <TouchableOpacity
           style={[styles.button, isLoading && styles.buttonDisabled]}
           onPress={handleLogin}
@@ -96,6 +113,7 @@ const LoginScreen = ({ navigation }: LoginScreenProps) => {
             {isLoading ? "Signing in..." : "Eat Now!"}
           </Text>
         </TouchableOpacity>
+
         <View style={styles.linewithtext}>
           <View style={styles.line} />
           <Text style={styles.text}>or</Text>
@@ -117,10 +135,11 @@ const LoginScreen = ({ navigation }: LoginScreenProps) => {
           </TouchableOpacity>
         </View>
       </View>
+
       <View style={styles.SignupBtn}>
         <TouchableOpacity onPress={() => router.push("/signup")}>
-          <AntDesign name="up" size={15} color="white" style={styles.upArrow}/>
-          <Text style={[styles.signup, {color:"white"}]}>Sign Up</Text>
+          <AntDesign name="up" size={15} color="white" style={styles.upArrow} />
+          <Text style={[styles.signup, { color: "white" }]}>Sign Up</Text>
         </TouchableOpacity>
       </View>
     </LinearGradient>

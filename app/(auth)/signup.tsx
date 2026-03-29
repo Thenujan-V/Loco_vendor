@@ -112,18 +112,9 @@ const SignupScreen = ({ navigation }: SignupScreenProps) => {
     }
 
     try {
-      /**
-       * Note: If you have an endpoint that accepts FormData, you can utilize the `authService.signupForm` here.
-       * Since we need to transition to OTP BEFORE logging them in, we bypass the direct Redux auth dispatch for now
-       * or dispatch an action that only registers but does not grant a token.
-       * 
-       * Example Form payload mapping:
-       * const formData = new FormData()
-       * formData.append("username", username) ...
-       */
-
-      // Assuming API sent OTP to email, navigate to the newly created OTP verification screen.
-      router.push({ pathname: "/(auth)/otp-verification", params: { email } });
+      // Navigate directly to login after successful register
+      Alert.alert("Success", "Account created successfully!");
+      router.push("/(auth)/login");
 
     } catch (error: any) {
       Alert.alert(

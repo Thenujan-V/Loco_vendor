@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react';
-import { Stack, useRouter, useSegments } from 'expo-router';
-import { Provider, useDispatch, useSelector } from 'react-redux';
-import { store } from '../redux/store';
-import * as SecureStore from 'expo-secure-store';
-import { authSuccess } from '../redux/slices/authSlice';
-import { ActivityIndicator, View, useColorScheme } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { Stack, useRouter, useSegments } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, useColorScheme, View } from 'react-native';
+import { Provider, useDispatch, useSelector } from 'react-redux';
+import { authSuccess } from '../redux/slices/authSlice';
+import { store } from '../redux/store';
 
 function RootLayoutNav() {
   const { token, role } = useSelector((state: any) => state.auth);
@@ -34,27 +35,37 @@ function RootLayoutNav() {
     };
 
     bootstrapAsync();
-  }, [dispatch]);
+  }, []);
 
   // 2. Role-Based Navigation Logic
   useEffect(() => {
-    if (!isReady) return; // Don't navigate until we've checked SecureStore
+    if (!isReady) return;
 
-    const inAuthGroup = (segments[0] as string) === '(auth)';
-    const inUserGroup = (segments[0] as string) === '(user)';
+    const inAuthGroup = segments[0] === '(auth)';
+    const inUserGroup = segments[0] === '(user)';
 
-    if (!token) {
-      // If no token, force user to Register by default
-      if (!inAuthGroup) {
-        router.replace('/(auth)/signup' as any);
+    const testToken = '123';
+    const testRole = 'User';
+
+    const checkInitialRoute = async () => {
+      if (!testToken) {
+        if (!inAuthGroup) {
+          // router.replace('/(auth)/login' as any);
+          router.replace('/(user)' as any);
+        }
+      } else {
+        if (testRole === 'User' && !inUserGroup) {
+          const station = await AsyncStorage.getItem('deliveryStation');
+          if (!station) {
+            // router.replace('/form/train-details' as any);
+          } else {
+            router.replace('/(user)' as any);
+          }
+        }
       }
-    } else {
-      // If token exists, keep users out of the auth screens.
-      if (role === 'User' && !inUserGroup) {
-        router.replace('/(user)' as any);
-      }
-    }
-  }, [token, role, isReady, segments, router]);
+    };
+    checkInitialRoute();
+  }, [token, role, isReady, segments]);
 
   // 3. Show a loading spinner while checking SecureStore
   if (!isReady) {
@@ -67,10 +78,9 @@ function RootLayoutNav() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(auth)" />
-        <Stack.Screen name="(user)" />
-      </Stack>
+      <Stack screenOptions={{ headerShown: false }} />
+      {/* <Stack.Screen name="(user)" /> */}
+      {/* </Stack> */}
     </ThemeProvider>
   );
 }
