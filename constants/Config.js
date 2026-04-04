@@ -5,8 +5,8 @@ import { Platform } from 'react-native';
  */
 
 // Load from .env
-const WEB_API_URL = process.env.EXPO_PUBLIC_WEB_API_URL;       // for web (localhost)
-const MOBILE_API_URL = process.env.EXPO_PUBLIC_MOBILE_API_URL; // for mobile devices
+const WEB_API_URL = "http://localhost:3001";
+const MOBILE_API_URL = "http://192.168.8.197:3001"; // for mobile devices
 const PROD_API_URL = process.env.EXPO_PUBLIC_PROD_API_URL;     // for production server
 
 // Determine current environment
@@ -40,6 +40,7 @@ export const ENDPOINTS = {
   LOGIN: '/auth/login',
   SIGNUP: '/auth/signup',
   LOGOUT: '/auth/logout',
+  RESTAURANT_REGISTER: '/restaurant/register',
 
   // User Role
 //   USER_PROFILE: '/user/profile',
