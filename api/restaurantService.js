@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import apiClient from './client';
 import { ENDPOINTS } from '../constants/Config';
 import {
@@ -28,14 +29,33 @@ const getMimeType = (filename, mimeType) => {
   return 'image/jpeg';
 };
 
-const normalizeAsset = (asset, fallbackName) => {
+const normalizeAsset = async (asset, fallbackName) => {
   if (!asset?.uri) {
     return null;
   }
 
   const name = asset.name || asset.fileName || fallbackName;
   const type = getMimeType(name, asset.mimeType || asset.type);
-  const uri = asset.fileCopyUri || asset.uri;
+  const rawUri = asset.fileCopyUri || asset.uri;
+  const uri =
+    Platform.OS === 'android' && rawUri?.startsWith('file://')
+      ? rawUri
+      : rawUri;
+
+  if (Platform.OS === 'web') {
+    if (asset.file) {
+      return asset.file;
+    }
+
+    const response = await fetch(uri);
+    const blob = await response.blob();
+
+    if (typeof File !== 'undefined') {
+      return new File([blob], name, { type });
+    }
+
+    return blob;
+  }
 
   return {
     uri,
@@ -44,7 +64,7 @@ const normalizeAsset = (asset, fallbackName) => {
   };
 };
 
-const buildRestaurantRegistrationFormData = (payload) => {
+const buildRestaurantRegistrationFormData = async (payload) => {
   const formData = new FormData();
 
   formData.append('name', payload.name.trim());
@@ -54,12 +74,18 @@ const buildRestaurantRegistrationFormData = (payload) => {
   formData.append('password', payload.password);
   formData.append('locationLatitude', String(payload.locationLatitude));
   formData.append('locationLongitude', String(payload.locationLongitude));
-  formData.append('image', normalizeAsset(payload.image, 'restaurant-image.jpg'));
-  formData.append('userPicture', normalizeAsset(payload.userPicture, 'user-picture.jpg'));
-  formData.append('userDocument', normalizeAsset(payload.userDocument, 'user-document.pdf'));
+  formData.append('image', await normalizeAsset(payload.image, 'restaurant-image.jpg'));
+  formData.append(
+    'userPicture',
+    await normalizeAsset(payload.userPicture, 'user-picture.jpg')
+  );
+  formData.append(
+    'userDocument',
+    await normalizeAsset(payload.userDocument, 'user-document.pdf')
+  );
   formData.append(
     'restaurantDocument',
-    normalizeAsset(payload.restaurantDocument, 'restaurant-document.pdf'),
+    await normalizeAsset(payload.restaurantDocument, 'restaurant-document.pdf')
   );
 
   return formData;
@@ -70,14 +96,16 @@ const restaurantService = {
     dispatch(registrationStart());
 
     try {
-      const formData = buildRestaurantRegistrationFormData(payload);
+      const formData = await buildRestaurantRegistrationFormData(payload);
       const response = await apiClient.post(
         ENDPOINTS.RESTAURANT_REGISTER,
         formData,
         {
           headers: {
             Accept: 'application/json',
+            ...(Platform.OS !== 'web' ? { 'Content-Type': 'multipart/form-data' } : {}),
           },
+          transformRequest: (data) => data,
         }
       );
 

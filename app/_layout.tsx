@@ -51,7 +51,7 @@ function RootLayoutNav() {
         return;
       }
 
-      if (role === 'User' && !inUserGroup) {
+      if (role === 'RESTAURANT' && !inUserGroup) {
         router.replace('/(user)' as any);
       }
     };
