@@ -183,7 +183,7 @@ const LoginScreen = () => {
               style={styles.footerButton}
               onPress={() => router.push("/(auth)/signup")}
             >
-              <AntDesign name="arrowup" size={14} color={Colors.default.primary} />
+              <AntDesign size={14} color={Colors.default.primary} />
               <Text style={styles.footerButtonText}>Create Account</Text>
             </TouchableOpacity>
           </View>

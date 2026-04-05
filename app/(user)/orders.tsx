@@ -1,90 +1,242 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
-import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { useSelector } from 'react-redux';
 import { Colors } from '../../constants/theme';
+import {
+  formatOrderAge,
+  formatOrderItems,
+  formatOrderTotal,
+  getCustomerName,
+  type VendorOrder,
+  usePendingOrders,
+} from '../../hooks/usePendingOrders';
 
-const TABS = ['New', 'Ready', 'Completed'];
-
-// Mock Data
-const MOCK_ORDERS = [
-  { id: '1234', items: 'Chicken Rice x2', total: 'Rs. 1200', status: 'New', customer: 'John' },
-  { id: '1235', items: 'Fried Rice x1, Coke x1', total: 'Rs. 850', status: 'New', customer: 'Alice' },
-  { id: '1236', items: 'Noodles x2', total: 'Rs. 1000', status: 'Ready', customer: 'Bob' },
-  { id: '1237', items: 'Chicken Kottu x1', total: 'Rs. 1500', status: 'Completed', customer: 'Emma' },
-];
+const TABS = ['New', 'Ready', 'Completed'] as const;
+const NEW_ORDER_HIGHLIGHT_MS = 8000;
 
 export default function OrdersScreen() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState('New');
-
-  const filteredOrders = MOCK_ORDERS.filter(order => order.status === activeTab);
-
-  const handleAccept = (id: string) => {
-    Alert.alert('Accepted', `Order #${id} accepted successfully.`);
-    router.push(`/(user)/order/${id}` as any);
-  };
-
-  const handleReject = (id: string) => {
-    Alert.alert('Rejected', `Order #${id} has been rejected.`);
-  };
-
-  const navigateToOrder = (id: string) => {
-    router.push(`/(user)/order/${id}` as any);
-  }
-
-  const renderOrderCard = ({ item }: { item: any }) => (
-    <View style={styles.orderCard}>
-      <TouchableOpacity
-        style={{ flex: 1 }}
-        activeOpacity={0.8}
-        onPress={() => item.status !== 'New' ? navigateToOrder(item.id) : null}
-      >
-        <View style={styles.cardHeader}>
-          <Text style={styles.orderNumber}>Order #{item.id}</Text>
-          <Text style={styles.orderTime}>2 mins ago</Text>
-        </View>
-
-        <View style={styles.cardBody}>
-          <Text style={styles.orderItems}>Items: {item.items}</Text>
-          <Text style={styles.orderTotal}>Total: {item.total}</Text>
-        </View>
-
-        {item.status === 'New' && (
-          <View style={styles.actionButtons}>
-            <TouchableOpacity
-              style={[styles.btn, styles.acceptBtn]}
-              onPress={() => handleAccept(item.id)}
-            >
-              <Ionicons name="checkmark" size={18} color="#fff" style={styles.btnIcon} />
-              <Text style={styles.acceptText}>Accept</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.btn, styles.rejectBtn]}
-              onPress={() => handleReject(item.id)}
-            >
-              <Ionicons name="close" size={18} color={Colors.default.primary} style={styles.btnIcon} />
-              <Text style={styles.rejectText}>Reject</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {item.status !== 'New' && (
-          <View style={styles.actionButtons}>
-            <Text style={styles.statusBadge}>{item.status}</Text>
-            <Text style={styles.viewDetailsText}>Tap to View Details →</Text>
-          </View>
-        )}
-      </TouchableOpacity>
-    </View>
+  const restaurantId = useSelector((state: any) => state.auth.id);
+  const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>('New');
+  const [highlightedOrderIds, setHighlightedOrderIds] = useState<string[]>([]);
+  const previousOrderIdsRef = useRef(new Set<string>());
+  const highlightTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const { error, fetchPendingOrders, isLoading, isRefreshing, orders } = usePendingOrders(
+    restaurantId
   );
 
+  const clearHighlightTimeout = useCallback((orderId: string) => {
+    const timeout = highlightTimeoutsRef.current[orderId];
+
+    if (timeout) {
+      clearTimeout(timeout);
+      delete highlightTimeoutsRef.current[orderId];
+    }
+  }, []);
+
+  const clearAllHighlightTimeouts = useCallback(() => {
+    Object.keys(highlightTimeoutsRef.current).forEach(clearHighlightTimeout);
+  }, [clearHighlightTimeout]);
+
+  const scheduleHighlightRemoval = useCallback(
+    (orderId: string) => {
+      clearHighlightTimeout(orderId);
+
+      highlightTimeoutsRef.current[orderId] = setTimeout(() => {
+        setHighlightedOrderIds((current) => current.filter((id) => id !== orderId));
+        delete highlightTimeoutsRef.current[orderId];
+      }, NEW_ORDER_HIGHLIGHT_MS);
+    },
+    [clearHighlightTimeout]
+  );
+
+  useEffect(() => {
+    const previousIds = previousOrderIdsRef.current;
+    const latestIds = new Set<string>();
+    const newIds: string[] = [];
+
+    orders.forEach((order) => {
+      const orderId = String(order.id);
+      latestIds.add(orderId);
+
+      if (!previousIds.has(orderId)) {
+        newIds.push(orderId);
+      }
+    });
+
+    if (newIds.length > 0) {
+      setHighlightedOrderIds((currentIds) => [...new Set([...newIds, ...currentIds])]);
+      newIds.forEach(scheduleHighlightRemoval);
+    }
+
+    previousOrderIdsRef.current = latestIds;
+  }, [orders, scheduleHighlightRemoval]);
+
+  useEffect(() => {
+    previousOrderIdsRef.current = new Set<string>();
+    setHighlightedOrderIds([]);
+    clearAllHighlightTimeouts();
+  }, [clearAllHighlightTimeouts, restaurantId]);
+
+  useEffect(() => {
+    return () => {
+      clearAllHighlightTimeouts();
+    };
+  }, [clearAllHighlightTimeouts]);
+
+  const filteredOrders = useMemo(() => {
+    if (activeTab === 'New') {
+      return orders;
+    }
+
+    return [];
+  }, [activeTab, orders]);
+
+  const handleAccept = useCallback(
+    (id: string | number) => {
+      Alert.alert('Accepted', `Order #${id} accepted successfully.`);
+      router.push(`/(user)/order/${id}` as any);
+    },
+    [router]
+  );
+
+  const handleReject = useCallback((id: string | number) => {
+    Alert.alert('Rejected', `Order #${id} has been rejected.`);
+  }, []);
+
+  const navigateToOrder = useCallback(
+    (id: string | number) => {
+      router.push(`/(user)/order/${id}` as any);
+    },
+    [router]
+  );
+
+  const renderOrderCard = useCallback(
+    ({ item }: { item: VendorOrder }) => {
+      const isHighlighted = highlightedOrderIds.includes(String(item.id));
+
+      return (
+        <View style={[styles.orderCard, isHighlighted && styles.orderCardHighlighted]}>
+          <TouchableOpacity
+            style={{ flex: 1 }}
+            activeOpacity={0.85}
+            onPress={() => navigateToOrder(item.id)}
+          >
+            <View style={styles.cardHeader}>
+              <View>
+                <Text style={styles.orderNumber}>Order #{item.id}</Text>
+                <Text style={styles.customerName}>{getCustomerName(item)}</Text>
+              </View>
+              <View style={styles.headerMeta}>
+                {isHighlighted ? (
+                  <View style={styles.newBadge}>
+                    <Text style={styles.newBadgeText}>New</Text>
+                  </View>
+                ) : null}
+                <Text style={styles.orderTime}>{formatOrderAge(item.createdAt)}</Text>
+              </View>
+            </View>
+
+            <View style={styles.cardBody}>
+              <Text style={styles.orderItems}>Items: {formatOrderItems(item.items)}</Text>
+              <Text style={styles.orderTotal}>Total: {formatOrderTotal(item)}</Text>
+            </View>
+
+            <View style={styles.actionButtons}>
+              <TouchableOpacity
+                style={[styles.btn, styles.acceptBtn]}
+                onPress={() => handleAccept(item.id)}
+              >
+                <Ionicons name="checkmark" size={18} color="#fff" style={styles.btnIcon} />
+                <Text style={styles.acceptText}>Accept</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.btn, styles.rejectBtn]}
+                onPress={() => handleReject(item.id)}
+              >
+                <Ionicons
+                  name="close"
+                  size={18}
+                  color={Colors.default.primary}
+                  style={styles.btnIcon}
+                />
+                <Text style={styles.rejectText}>Reject</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </View>
+      );
+    },
+    [handleAccept, handleReject, highlightedOrderIds, navigateToOrder]
+  );
+
+  const renderContent = () => {
+    if (!restaurantId) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="storefront-outline" size={50} color="#ccc" />
+          <Text style={styles.emptyText}>Restaurant session not found.</Text>
+        </View>
+      );
+    }
+
+    if (isLoading && orders.length === 0) {
+      return (
+        <View style={styles.emptyContainer}>
+          <ActivityIndicator size="large" color={Colors.default.primary} />
+          <Text style={styles.emptyText}>Checking for new pending orders...</Text>
+        </View>
+      );
+    }
+
+    if (filteredOrders.length === 0) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="receipt-outline" size={50} color="#ccc" />
+          <Text style={styles.emptyText}>
+            {activeTab === 'New'
+              ? 'No pending orders right now.'
+              : `${activeTab} orders are not available from the current API.`}
+          </Text>
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        </View>
+      );
+    }
+
+    return (
+      <FlatList
+        data={filteredOrders}
+        keyExtractor={(item) => String(item.id)}
+        renderItem={renderOrderCard}
+        contentContainerStyle={styles.listContainer}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={() => fetchPendingOrders({ isManual: true })}
+            tintColor={Colors.default.primary}
+          />
+        }
+      />
+    );
+  };
+
   return (
-    <LinearGradient colors={["#FEEDE6", "#FFFFFF"]} style={styles.gradient}>
+    <LinearGradient colors={['#FEEDE6', '#FFFFFF']} style={styles.gradient}>
       <View style={styles.container}>
-        {/* Custom Tabs */}
         <View style={styles.tabContainer}>
           {TABS.map((tab) => (
             <TouchableOpacity
@@ -99,21 +251,9 @@ export default function OrdersScreen() {
           ))}
         </View>
 
-        {/* Orders List */}
-        {filteredOrders.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Ionicons name="receipt-outline" size={50} color="#ccc" />
-            <Text style={styles.emptyText}>No {activeTab.toLowerCase()} orders right now.</Text>
-          </View>
-        ) : (
-          <FlatList
-            data={filteredOrders}
-            keyExtractor={(item) => item.id}
-            renderItem={renderOrderCard}
-            contentContainerStyle={styles.listContainer}
-            showsVerticalScrollIndicator={false}
-          />
-        )}
+        {error && orders.length > 0 ? <Text style={styles.inlineErrorText}>{error}</Text> : null}
+
+        {renderContent()}
       </View>
     </LinearGradient>
   );
@@ -155,6 +295,12 @@ const styles = StyleSheet.create({
   activeTabText: {
     color: '#fff',
   },
+  inlineErrorText: {
+    marginHorizontal: 20,
+    marginBottom: 10,
+    color: '#c62828',
+    fontSize: 13,
+  },
   listContainer: {
     paddingHorizontal: 20,
     paddingBottom: 20,
@@ -169,6 +315,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 5,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  orderCardHighlighted: {
+    borderColor: '#FFC9B3',
+    backgroundColor: '#FFF8F5',
   },
   cardHeader: {
     flexDirection: 'row',
@@ -178,10 +330,30 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     marginBottom: 10,
   },
+  headerMeta: {
+    alignItems: 'flex-end',
+  },
+  newBadge: {
+    backgroundColor: '#FFE7DC',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginBottom: 6,
+  },
+  newBadgeText: {
+    color: Colors.default.primary,
+    fontSize: 11,
+    fontWeight: '700',
+  },
   orderNumber: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#333',
+  },
+  customerName: {
+    marginTop: 4,
+    fontSize: 13,
+    color: '#666',
   },
   orderTime: {
     fontSize: 12,
@@ -233,29 +405,22 @@ const styles = StyleSheet.create({
     color: Colors.default.primary,
     fontWeight: 'bold',
   },
-  statusBadge: {
-    backgroundColor: '#fff3e0',
-    color: '#e65100',
-    paddingHorizontal: 15,
-    paddingVertical: 6,
-    borderRadius: 15,
-    fontSize: 12,
-    fontWeight: 'bold',
-    overflow: 'hidden',
-  },
-  viewDetailsText: {
-    fontSize: 13,
-    color: 'gray',
-    fontWeight: '500',
-  },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 30,
   },
   emptyText: {
     fontSize: 16,
     color: '#888',
     marginTop: 10,
-  }
+    textAlign: 'center',
+  },
+  errorText: {
+    marginTop: 12,
+    fontSize: 13,
+    color: '#c62828',
+    textAlign: 'center',
+  },
 });

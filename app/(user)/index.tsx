@@ -1,24 +1,26 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Switch, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Switch, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Colors } from '../../constants/theme';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSelector } from 'react-redux';
+import { formatOrderAge, usePendingOrders } from '../../hooks/usePendingOrders';
 
 export default function Dashboard() {
   const router = useRouter();
+  const restaurantId = useSelector((state: any) => state.auth.id);
   const [isOpen, setIsOpen] = useState(true);
+  const { error, isLoading, pendingCount, recentOrders } = usePendingOrders(restaurantId);
 
   return (
-    <LinearGradient colors={["#FEEDE6", "#FFFFFF"]} style={styles.gradient}>
+    <LinearGradient colors={['#FEEDE6', '#FFFFFF']} style={styles.gradient}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-        
-        {/* Header section with Open/Close Toggle */}
         <View style={styles.header}>
           <Text style={styles.subtitle}>Welcome back, Loco Vendor!</Text>
           <View style={styles.toggleContainer}>
             <Text style={[styles.statusText, { color: isOpen ? Colors.default.primary : 'gray' }]}>
-              {isOpen ? "🟢 OPEN" : "🔴 CLOSED"}
+              {isOpen ? 'OPEN' : 'CLOSED'}
             </Text>
             <Switch
               value={isOpen}
@@ -29,7 +31,6 @@ export default function Dashboard() {
           </View>
         </View>
 
-        {/* Sales & Orders Overview Cards */}
         <View style={styles.statsCard}>
           <View style={styles.statRow}>
             <View style={styles.statItem}>
@@ -40,39 +41,56 @@ export default function Dashboard() {
           <View style={styles.statDivider} />
           <View style={styles.statRow}>
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>25</Text>
+              <Text style={styles.statValue}>{pendingCount}</Text>
               <Text style={styles.statLabel}>Orders</Text>
             </View>
             <View style={styles.statItemBorder} />
             <View style={styles.statItem}>
-              <Text style={[styles.statValue, { color: '#ff8c00' }]}>5</Text>
+              <Text style={[styles.statValue, { color: '#ff8c00' }]}>{pendingCount}</Text>
               <Text style={styles.statLabel}>Pending</Text>
             </View>
           </View>
         </View>
 
-        {/* Recent Notifications / New Orders */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>New Orders 🔔</Text>
+          <Text style={styles.sectionTitle}>New Orders</Text>
           <TouchableOpacity onPress={() => router.push('/(user)/orders')}>
             <Text style={styles.seeAllText}>See all</Text>
           </TouchableOpacity>
         </View>
-        
+
         <View style={styles.ordersList}>
-          {['1234', '1235'].map((id, index) => (
-            <TouchableOpacity key={id} style={styles.orderListItem} onPress={() => router.push(`/(user)/order/${id}` as any)}>
-              <MaterialIcons name="fastfood" size={24} color={Colors.default.primary} />
-              <View style={styles.orderListText}>
-                <Text style={styles.orderNumberTitle}>Order #{id}</Text>
-                <Text style={styles.orderTime}>Just now</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="gray" />
-            </TouchableOpacity>
-          ))}
+          {!restaurantId ? (
+            <Text style={styles.infoText}>Restaurant session not found.</Text>
+          ) : isLoading && recentOrders.length === 0 ? (
+            <View style={styles.loaderWrap}>
+              <ActivityIndicator size="small" color={Colors.default.primary} />
+              <Text style={styles.infoText}>Loading pending orders...</Text>
+            </View>
+          ) : recentOrders.length === 0 ? (
+            <Text style={styles.infoText}>No pending orders right now.</Text>
+          ) : (
+            recentOrders.map((order, index) => (
+              <TouchableOpacity
+                key={String(order.id)}
+                style={[
+                  styles.orderListItem,
+                  index === recentOrders.length - 1 && styles.orderListItemLast,
+                ]}
+                onPress={() => router.push(`/(user)/order/${order.id}` as any)}
+              >
+                <MaterialIcons name="fastfood" size={24} color={Colors.default.primary} />
+                <View style={styles.orderListText}>
+                  <Text style={styles.orderNumberTitle}>Order #{order.id}</Text>
+                  <Text style={styles.orderTime}>{formatOrderAge(order.createdAt)}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="gray" />
+              </TouchableOpacity>
+            ))
+          )}
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
         </View>
 
-        {/* Quick Links / Action Grid */}
         <Text style={[styles.sectionTitle, { marginTop: 15 }]}>Quick Actions</Text>
         <View style={styles.actionGrid}>
           <TouchableOpacity style={styles.actionBox} onPress={() => router.push('/(user)/menu')}>
@@ -95,7 +113,6 @@ export default function Dashboard() {
             <Text style={styles.actionText}>Profile</Text>
           </TouchableOpacity>
         </View>
-        
       </ScrollView>
     </LinearGradient>
   );
@@ -192,12 +209,31 @@ const styles = StyleSheet.create({
     padding: 10,
     marginBottom: 25,
   },
+  loaderWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+  },
+  infoText: {
+    color: '#666',
+    textAlign: 'center',
+    paddingVertical: 16,
+  },
+  errorText: {
+    color: '#c62828',
+    textAlign: 'center',
+    paddingTop: 8,
+    fontSize: 13,
+  },
   orderListItem: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 15,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
+  },
+  orderListItemLast: {
+    borderBottomWidth: 0,
   },
   orderListText: {
     flex: 1,

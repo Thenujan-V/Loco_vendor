@@ -28,7 +28,7 @@ function RootLayoutNav() {
           dispatch(
             authSuccess({
               token: savedToken,
-              id: savedId ? Number(savedId) : null,
+              id: savedId ?? null,
               role: savedRole,
             })
           );

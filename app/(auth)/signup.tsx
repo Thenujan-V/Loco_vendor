@@ -425,7 +425,7 @@ const SignupScreen = () => {
               style={styles.footerButton}
               onPress={() => router.push("/(auth)/login")}
             >
-              <AntDesign name="arrowup" size={14} color={Colors.default.primary} />
+              <AntDesign  size={14} color={Colors.default.primary} />
               <Text style={styles.footerButtonText}>Go to Sign In</Text>
             </TouchableOpacity>
           </View>

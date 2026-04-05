@@ -43,6 +43,8 @@ export const ENDPOINTS = {
   LOGOUT: '/auth/logout',
   RESTAURANT_REGISTER: '/restaurant/register',
   RESTAURANT_LOGIN: '/restaurant/login',
+  RESTAURANT_GET_BY_STATUS: (restaurantId, status) =>
+    `/order/restaurant/get-by-status/${restaurantId}/${status}`,
 
   // User Role
 //   USER_PROFILE: '/user/profile',

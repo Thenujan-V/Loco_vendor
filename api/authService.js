@@ -12,7 +12,7 @@ const decodeBase64Url = (value) => {
     return globalThis.atob(padded);
   }
 
-  throw new Error('Base64 decoding is not available in this environment.');
+  return Buffer.from(padded, 'base64').toString('utf-8');
 };
 
 const decodeJwtPayload = (token) => {
@@ -25,6 +25,18 @@ const decodeJwtPayload = (token) => {
   const decodedPayload = decodeBase64Url(parts[1]);
   return JSON.parse(decodedPayload);
 };
+
+const resolveAuthId = (responseData, decodedToken) =>
+  decodedToken?.id ??
+  decodedToken?.restaurantId ??
+  decodedToken?.userId ??
+  decodedToken?.sub ??
+  responseData?.id ??
+  responseData?.restaurantId ??
+  responseData?.userId ??
+  responseData?.data?.id ??
+  responseData?.data?.restaurantId ??
+  null;
 
 const authService = {
   // LOGIN ACTION
@@ -41,7 +53,7 @@ const authService = {
       }
 
       const decodedToken = decodeJwtPayload(token);
-      const id = decodedToken?.id ?? null;
+      const id = resolveAuthId(response.data, decodedToken);
       const role = decodedToken?.role || 'RESTAURANT';
 
       console.log("Received token:", token);

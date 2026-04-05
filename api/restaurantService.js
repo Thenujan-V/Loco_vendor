@@ -121,6 +121,13 @@ const restaurantService = {
       throw error;
     }
   },
+  getOrdersByStatus: async (restaurantId, status) => {
+    const response = await apiClient.get(
+      ENDPOINTS.RESTAURANT_GET_BY_STATUS(restaurantId, status)
+    );
+    console.log('Orders by Status Response:', response.data);
+    return response.data;
+  },
 };
 
 export default restaurantService;
