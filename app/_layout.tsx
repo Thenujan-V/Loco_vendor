@@ -20,7 +20,9 @@ function RootLayoutNav() {
     const bootstrapAsync = async () => {
       try {
         const savedToken = await SecureStore.getItemAsync('userToken');
-        const savedId = await SecureStore.getItemAsync('userId');
+        const savedRestaurantId =
+          (await SecureStore.getItemAsync('restaurantId')) ||
+          (await SecureStore.getItemAsync('userId'));
         const savedRole = await SecureStore.getItemAsync('userRole');
 
         if (savedToken && savedRole) {
@@ -28,7 +30,7 @@ function RootLayoutNav() {
           dispatch(
             authSuccess({
               token: savedToken,
-              id: savedId ?? null,
+              id: savedRestaurantId ?? null,
               role: savedRole,
             })
           );

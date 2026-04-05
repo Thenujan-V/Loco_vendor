@@ -64,6 +64,7 @@ const authService = {
       // Save to Secure Storage so the session persists
       await SecureStore.setItemAsync('userToken', token);
       await SecureStore.setItemAsync('userId', String(id));
+      await SecureStore.setItemAsync('restaurantId', String(id));
       await SecureStore.setItemAsync('userRole', role);
 
       //  Update Redux state
@@ -88,6 +89,7 @@ const authService = {
 
       await SecureStore.setItemAsync('userToken', token);
       await SecureStore.setItemAsync('userId', String(id));
+      await SecureStore.setItemAsync('restaurantId', String(id));
       await SecureStore.setItemAsync('userRole', role);
 
       dispatch(authSuccess({ token, id, role }));

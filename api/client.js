@@ -36,6 +36,7 @@ apiClient.interceptors.response.use(
 
       await SecureStore.deleteItemAsync('userToken');
       await SecureStore.deleteItemAsync('userId');
+      await SecureStore.deleteItemAsync('restaurantId');
       await SecureStore.deleteItemAsync('userRole');
       
       // Clear the Redux state

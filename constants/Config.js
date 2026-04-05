@@ -43,8 +43,12 @@ export const ENDPOINTS = {
   LOGOUT: '/auth/logout',
   RESTAURANT_REGISTER: '/restaurant/register',
   RESTAURANT_LOGIN: '/restaurant/login',
+  RESTAURANT_DETAILS: (restaurantId) => `/restaurant/${restaurantId}`,
   RESTAURANT_GET_BY_STATUS: (restaurantId, status) =>
     `/order/restaurant/get-by-status/${restaurantId}/${status}`,
+  ORDER_GET_ADMIN: (orderId) => `/order/admin/get/${orderId}`,
+  ORDER_ACCEPT: (orderId) => `/order/accept/${orderId}`,
+  ORDER_REJECT: (orderId) => `/order/reject/${orderId}`,
 
   // User Role
 //   USER_PROFILE: '/user/profile',

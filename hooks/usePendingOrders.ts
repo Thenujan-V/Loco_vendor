@@ -152,16 +152,12 @@ export const usePendingOrders = (restaurantId: string | number | null | undefine
     }
   }, []);
 
-  const mergeIncomingOrders = useCallback((incomingOrders: VendorOrder[]) => {
+  const syncIncomingOrders = useCallback((incomingOrders: VendorOrder[]) => {
     const normalizedOrders = sortOrdersNewestFirst(
       incomingOrders.filter((order) => order?.id !== undefined && order?.id !== null)
     );
 
-    if (normalizedOrders.length === 0) {
-      const shouldPlaySound = false;
-      return { newOrders: [], shouldPlaySound };
-    }
-
+    const latestOrderIds = new Set(normalizedOrders.map((order) => String(order.id)));
     const newOrders = normalizedOrders.filter((order) => {
       const orderId = String(order.id);
 
@@ -173,11 +169,8 @@ export const usePendingOrders = (restaurantId: string | number | null | undefine
       return true;
     });
 
-    if (newOrders.length === 0) {
-      return { newOrders: [], shouldPlaySound: false };
-    }
-
-    setOrders((currentOrders) => [...newOrders, ...currentOrders]);
+    setOrders(normalizedOrders);
+    seenOrderIdsRef.current = latestOrderIds;
 
     return {
       newOrders,
@@ -222,7 +215,7 @@ export const usePendingOrders = (restaurantId: string | number | null | undefine
 
         const response = await restaurantService.getOrdersByStatus(restaurantId, PENDING_STATUS);
         const incomingOrders = extractOrders(response);
-        const { newOrders, shouldPlaySound } = mergeIncomingOrders(incomingOrders);
+        const { newOrders, shouldPlaySound } = syncIncomingOrders(incomingOrders);
 
         console.log('[pending-orders] received', incomingOrders.length);
         setError('');
@@ -244,7 +237,7 @@ export const usePendingOrders = (restaurantId: string | number | null | undefine
         scheduleNextPoll(fetchPendingOrders);
       }
     },
-    [mergeIncomingOrders, orders.length, restaurantId, scheduleNextPoll]
+    [orders.length, restaurantId, scheduleNextPoll, syncIncomingOrders]
   );
 
   useFocusEffect(

@@ -128,6 +128,10 @@ const restaurantService = {
     console.log('Orders by Status Response:', response.data);
     return response.data;
   },
+  getRestaurantDetails: async (restaurantId) => {
+    const response = await apiClient.get(ENDPOINTS.RESTAURANT_DETAILS(restaurantId));
+    return response.data;
+  },
 };
 
 export default restaurantService;

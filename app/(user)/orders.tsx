@@ -1,10 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   RefreshControl,
   StyleSheet,
@@ -13,247 +13,182 @@ import {
   View,
 } from 'react-native';
 import { useSelector } from 'react-redux';
+import orderService from '../../api/orderService';
+import OrderCard from '../../components/orders/OrderCard';
 import { Colors } from '../../constants/theme';
 import {
-  formatOrderAge,
-  formatOrderItems,
-  formatOrderTotal,
-  getCustomerName,
+  extractOrderList,
+  ORDER_STATUSES,
+  sortOrdersNewestFirst,
+  type OrderStatus,
   type VendorOrder,
-  usePendingOrders,
-} from '../../hooks/usePendingOrders';
+} from '../../utils/orderHelpers';
 
-const TABS = ['New', 'Ready', 'Completed'] as const;
-const NEW_ORDER_HIGHLIGHT_MS = 8000;
+const ORDER_TABS = [
+  { key: 'ALL', label: 'All' },
+  { key: 'PENDING', label: 'Pending' },
+  { key: 'ACCEPTED', label: 'Accepted' },
+  { key: 'ASSIGNED', label: 'Assigned' },
+  { key: 'DELIVERED', label: 'Delivered' },
+  { key: 'CANCELLED', label: 'Cancelled' },
+] as const;
+
+type OrderTabKey = (typeof ORDER_TABS)[number]['key'];
+
+const dedupeOrders = (orders: VendorOrder[]) => {
+  const seenIds = new Set<string>();
+
+  return orders.filter((order) => {
+    const orderId = String(order.id);
+
+    if (seenIds.has(orderId)) {
+      return false;
+    }
+
+    seenIds.add(orderId);
+    return true;
+  });
+};
 
 export default function OrdersScreen() {
   const router = useRouter();
   const restaurantId = useSelector((state: any) => state.auth.id);
-  const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>('New');
-  const [highlightedOrderIds, setHighlightedOrderIds] = useState<string[]>([]);
-  const previousOrderIdsRef = useRef(new Set<string>());
-  const highlightTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  const { error, fetchPendingOrders, isLoading, isRefreshing, orders } = usePendingOrders(
-    restaurantId
-  );
+  const [activeTab, setActiveTab] = useState<OrderTabKey>('ALL');
+  const [orders, setOrders] = useState<VendorOrder[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState('');
 
-  const clearHighlightTimeout = useCallback((orderId: string) => {
-    const timeout = highlightTimeoutsRef.current[orderId];
-
-    if (timeout) {
-      clearTimeout(timeout);
-      delete highlightTimeoutsRef.current[orderId];
-    }
-  }, []);
-
-  const clearAllHighlightTimeouts = useCallback(() => {
-    Object.keys(highlightTimeoutsRef.current).forEach(clearHighlightTimeout);
-  }, [clearHighlightTimeout]);
-
-  const scheduleHighlightRemoval = useCallback(
-    (orderId: string) => {
-      clearHighlightTimeout(orderId);
-
-      highlightTimeoutsRef.current[orderId] = setTimeout(() => {
-        setHighlightedOrderIds((current) => current.filter((id) => id !== orderId));
-        delete highlightTimeoutsRef.current[orderId];
-      }, NEW_ORDER_HIGHLIGHT_MS);
-    },
-    [clearHighlightTimeout]
-  );
-
-  useEffect(() => {
-    const previousIds = previousOrderIdsRef.current;
-    const latestIds = new Set<string>();
-    const newIds: string[] = [];
-
-    orders.forEach((order) => {
-      const orderId = String(order.id);
-      latestIds.add(orderId);
-
-      if (!previousIds.has(orderId)) {
-        newIds.push(orderId);
+  const fetchOrders = useCallback(
+    async ({ isManual = false }: { isManual?: boolean } = {}) => {
+      if (!restaurantId) {
+        setOrders([]);
+        setIsLoading(false);
+        setIsRefreshing(false);
+        setError('Restaurant session not found.');
+        return;
       }
-    });
 
-    if (newIds.length > 0) {
-      setHighlightedOrderIds((currentIds) => [...new Set([...newIds, ...currentIds])]);
-      newIds.forEach(scheduleHighlightRemoval);
-    }
+      if (isManual) {
+        setIsRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
 
-    previousOrderIdsRef.current = latestIds;
-  }, [orders, scheduleHighlightRemoval]);
+      try {
+        let nextOrders: VendorOrder[] = [];
 
-  useEffect(() => {
-    previousOrderIdsRef.current = new Set<string>();
-    setHighlightedOrderIds([]);
-    clearAllHighlightTimeouts();
-  }, [clearAllHighlightTimeouts, restaurantId]);
+        if (activeTab === 'ALL') {
+          const responses = await Promise.all(
+            ORDER_STATUSES.map((status) => orderService.getOrdersByStatus(restaurantId, status))
+          );
 
-  useEffect(() => {
-    return () => {
-      clearAllHighlightTimeouts();
-    };
-  }, [clearAllHighlightTimeouts]);
+          nextOrders = responses.flatMap((response) => extractOrderList(response));
+        } else {
+          const response = await orderService.getOrdersByStatus(
+            restaurantId,
+            activeTab as OrderStatus
+          );
+          nextOrders = extractOrderList(response);
+        }
 
-  const filteredOrders = useMemo(() => {
-    if (activeTab === 'New') {
+        setOrders(sortOrdersNewestFirst(dedupeOrders(nextOrders)));
+        setError('');
+      } catch (fetchError: any) {
+        setError(
+          fetchError?.response?.data?.message ||
+            fetchError?.message ||
+            'Unable to load orders right now.'
+        );
+      } finally {
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
+    },
+    [activeTab, restaurantId]
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchOrders();
+    }, [fetchOrders])
+  );
+
+  const visibleOrders = useMemo(() => {
+    if (activeTab === 'ALL') {
       return orders;
     }
 
-    return [];
+    return orders.filter((order) => String(order.status || '').toUpperCase() === activeTab);
   }, [activeTab, orders]);
 
-  const handleAccept = useCallback(
-    (id: string | number) => {
-      Alert.alert('Accepted', `Order #${id} accepted successfully.`);
-      router.push(`/(user)/order/${id}` as any);
-    },
-    [router]
-  );
-
-  const handleReject = useCallback((id: string | number) => {
-    Alert.alert('Rejected', `Order #${id} has been rejected.`);
-  }, []);
-
-  const navigateToOrder = useCallback(
-    (id: string | number) => {
-      router.push(`/(user)/order/${id}` as any);
-    },
-    [router]
-  );
-
-  const renderOrderCard = useCallback(
-    ({ item }: { item: VendorOrder }) => {
-      const isHighlighted = highlightedOrderIds.includes(String(item.id));
-
-      return (
-        <View style={[styles.orderCard, isHighlighted && styles.orderCardHighlighted]}>
-          <TouchableOpacity
-            style={{ flex: 1 }}
-            activeOpacity={0.85}
-            onPress={() => navigateToOrder(item.id)}
-          >
-            <View style={styles.cardHeader}>
-              <View>
-                <Text style={styles.orderNumber}>Order #{item.id}</Text>
-                <Text style={styles.customerName}>{getCustomerName(item)}</Text>
-              </View>
-              <View style={styles.headerMeta}>
-                {isHighlighted ? (
-                  <View style={styles.newBadge}>
-                    <Text style={styles.newBadgeText}>New</Text>
-                  </View>
-                ) : null}
-                <Text style={styles.orderTime}>{formatOrderAge(item.createdAt)}</Text>
-              </View>
-            </View>
-
-            <View style={styles.cardBody}>
-              <Text style={styles.orderItems}>Items: {formatOrderItems(item.items)}</Text>
-              <Text style={styles.orderTotal}>Total: {formatOrderTotal(item)}</Text>
-            </View>
-
-            <View style={styles.actionButtons}>
-              <TouchableOpacity
-                style={[styles.btn, styles.acceptBtn]}
-                onPress={() => handleAccept(item.id)}
-              >
-                <Ionicons name="checkmark" size={18} color="#fff" style={styles.btnIcon} />
-                <Text style={styles.acceptText}>Accept</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.btn, styles.rejectBtn]}
-                onPress={() => handleReject(item.id)}
-              >
-                <Ionicons
-                  name="close"
-                  size={18}
-                  color={Colors.default.primary}
-                  style={styles.btnIcon}
-                />
-                <Text style={styles.rejectText}>Reject</Text>
-              </TouchableOpacity>
-            </View>
-          </TouchableOpacity>
-        </View>
-      );
-    },
-    [handleAccept, handleReject, highlightedOrderIds, navigateToOrder]
-  );
-
-  const renderContent = () => {
-    if (!restaurantId) {
-      return (
-        <View style={styles.emptyContainer}>
-          <Ionicons name="storefront-outline" size={50} color="#ccc" />
-          <Text style={styles.emptyText}>Restaurant session not found.</Text>
-        </View>
-      );
-    }
-
-    if (isLoading && orders.length === 0) {
+  const renderEmptyState = () => {
+    if (isLoading) {
       return (
         <View style={styles.emptyContainer}>
           <ActivityIndicator size="large" color={Colors.default.primary} />
-          <Text style={styles.emptyText}>Checking for new pending orders...</Text>
-        </View>
-      );
-    }
-
-    if (filteredOrders.length === 0) {
-      return (
-        <View style={styles.emptyContainer}>
-          <Ionicons name="receipt-outline" size={50} color="#ccc" />
-          <Text style={styles.emptyText}>
-            {activeTab === 'New'
-              ? 'No pending orders right now.'
-              : `${activeTab} orders are not available from the current API.`}
-          </Text>
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+          <Text style={styles.emptyText}>Loading orders...</Text>
         </View>
       );
     }
 
     return (
-      <FlatList
-        data={filteredOrders}
-        keyExtractor={(item) => String(item.id)}
-        renderItem={renderOrderCard}
-        contentContainerStyle={styles.listContainer}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={() => fetchPendingOrders({ isManual: true })}
-            tintColor={Colors.default.primary}
-          />
-        }
-      />
+      <View style={styles.emptyContainer}>
+        <Ionicons name="receipt-outline" size={52} color="#CFCFCF" />
+        <Text style={styles.emptyText}>No orders found for this tab.</Text>
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      </View>
     );
   };
 
   return (
     <LinearGradient colors={['#FEEDE6', '#FFFFFF']} style={styles.gradient}>
       <View style={styles.container}>
-        <View style={styles.tabContainer}>
-          {TABS.map((tab) => (
-            <TouchableOpacity
-              key={tab}
-              style={[styles.tab, activeTab === tab && styles.activeTab]}
-              onPress={() => setActiveTab(tab)}
-            >
-              <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
-                {tab}
-              </Text>
-            </TouchableOpacity>
-          ))}
+        <Text style={styles.title}>Order Management</Text>
+        <Text style={styles.subtitle}>Track, review, and process vendor orders.</Text>
+
+        <View style={styles.tabsWrap}>
+          <FlatList
+            data={ORDER_TABS}
+            horizontal
+            keyExtractor={(item) => item.key}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tabsContainer}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={[styles.tabChip, activeTab === item.key && styles.tabChipActive]}
+                onPress={() => setActiveTab(item.key)}
+              >
+                <Text style={[styles.tabChipText, activeTab === item.key && styles.tabChipTextActive]}>
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            )}
+          />
         </View>
 
-        {error && orders.length > 0 ? <Text style={styles.inlineErrorText}>{error}</Text> : null}
+        {error && visibleOrders.length > 0 ? <Text style={styles.inlineErrorText}>{error}</Text> : null}
 
-        {renderContent()}
+        <FlatList
+          data={visibleOrders}
+          keyExtractor={(item) => String(item.id)}
+          renderItem={({ item }) => (
+            <OrderCard
+              order={item}
+              onPress={(order) => router.push(`/(user)/order/${order.id}` as any)}
+            />
+          )}
+          contentContainerStyle={styles.listContainer}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={renderEmptyState}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={() => fetchOrders({ isManual: true })}
+              tintColor={Colors.default.primary}
+            />
+          }
+        />
       </View>
     </LinearGradient>
   );
@@ -265,162 +200,77 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    paddingTop: 50,
+    paddingTop: 52,
   },
-  tabContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 15,
-    marginBottom: 15,
+  title: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#221813',
+    paddingHorizontal: 20,
   },
-  tab: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 8,
-    marginHorizontal: 4,
-    borderRadius: 20,
-    backgroundColor: '#fff',
+  subtitle: {
+    fontSize: 14,
+    color: '#6E625B',
+    marginTop: 6,
+    marginBottom: 18,
+    paddingHorizontal: 20,
+  },
+  tabsWrap: {
+    marginBottom: 8,
+  },
+  tabsContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  tabChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: '#E8DED8',
+    marginHorizontal: 4,
   },
-  activeTab: {
+  tabChipActive: {
     backgroundColor: Colors.default.primary,
     borderColor: Colors.default.primary,
   },
-  tabText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#666',
+  tabChipText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#6E625B',
   },
-  activeTabText: {
-    color: '#fff',
+  tabChipTextActive: {
+    color: '#FFFFFF',
   },
   inlineErrorText: {
-    marginHorizontal: 20,
-    marginBottom: 10,
-    color: '#c62828',
+    color: '#C62828',
     fontSize: 13,
+    marginBottom: 10,
+    paddingHorizontal: 20,
   },
   listContainer: {
     paddingHorizontal: 20,
-    paddingBottom: 20,
-  },
-  orderCard: {
-    backgroundColor: Colors.default.white,
-    borderRadius: 15,
-    padding: 18,
-    marginBottom: 15,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 5,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  orderCardHighlighted: {
-    borderColor: '#FFC9B3',
-    backgroundColor: '#FFF8F5',
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    paddingBottom: 10,
-    marginBottom: 10,
-  },
-  headerMeta: {
-    alignItems: 'flex-end',
-  },
-  newBadge: {
-    backgroundColor: '#FFE7DC',
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    marginBottom: 6,
-  },
-  newBadgeText: {
-    color: Colors.default.primary,
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  orderNumber: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  customerName: {
-    marginTop: 4,
-    fontSize: 13,
-    color: '#666',
-  },
-  orderTime: {
-    fontSize: 12,
-    color: '#888',
-  },
-  cardBody: {
-    marginBottom: 15,
-  },
-  orderItems: {
-    fontSize: 14,
-    color: '#555',
-    marginBottom: 5,
-  },
-  orderTotal: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 5,
-  },
-  btn: {
-    flexDirection: 'row',
-    flex: 0.48,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  btnIcon: {
-    marginRight: 5,
-  },
-  acceptBtn: {
-    backgroundColor: Colors.default.primary,
-  },
-  acceptText: {
-    color: '#fff',
-    fontWeight: 'bold',
-  },
-  rejectBtn: {
-    backgroundColor: '#ffe6e6',
-    borderWidth: 1,
-    borderColor: '#ffcccb',
-  },
-  rejectText: {
-    color: Colors.default.primary,
-    fontWeight: 'bold',
+    paddingBottom: 24,
+    flexGrow: 1,
   },
   emptyContainer: {
     flex: 1,
+    minHeight: 360,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 30,
+    paddingHorizontal: 24,
   },
   emptyText: {
+    marginTop: 14,
     fontSize: 16,
-    color: '#888',
-    marginTop: 10,
+    color: '#777',
     textAlign: 'center',
   },
   errorText: {
-    marginTop: 12,
+    marginTop: 10,
     fontSize: 13,
-    color: '#c62828',
+    color: '#C62828',
     textAlign: 'center',
   },
 });
