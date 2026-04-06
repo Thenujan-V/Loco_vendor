@@ -187,7 +187,7 @@ export default function OrderProcessingScreen() {
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Items</Text>
           {order.items?.length ? (
-            order.items.map((item, index) => {
+            order.items.map((item: any, index) => {
               const imageUri = getImageUri(getItemImage(item));
 
               return (
@@ -207,8 +207,8 @@ export default function OrderProcessingScreen() {
                   )}
 
                   <View style={styles.itemContent}>
-                    <Text style={styles.itemName}>{item.name || item.title || 'Item'}</Text>
-                    <Text style={styles.itemMeta}>Quantity: {item.quantity ?? item.qty ?? 1}</Text>
+                    <Text style={styles.itemName}>{item?.item?.name || 'Item'}</Text>
+                    <Text style={styles.itemMeta}>Quantity: {item.quantity ?? 1}</Text>
                   </View>
 
                   <Text style={styles.itemPrice}>{formatCurrency(item.price ?? null)}</Text>
